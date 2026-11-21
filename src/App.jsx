@@ -14,7 +14,7 @@ export default function App() {
       <Route element={<Layout />}>
         <Route path="/" element={<Home />} />
         <Route path="/album/:slug" element={<AlbumDetails />} />
-        <Route path="/scan/:memoryId" element={<ARScanner />} />
+        <Route path="/album/:slug/scan" element={<ARScanner />} />
         <Route path="/login" element={<Login />} />
         <Route element={<ProtectedRoute />}>
           <Route path="/admin" element={<Dashboard />} />

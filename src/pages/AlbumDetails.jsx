@@ -19,7 +19,7 @@ export default function AlbumDetails() {
       setAlbum(a ?? null)
       if (a) {
         const { data: m } = await supabase.from('memories').select('*')
-          .eq('album_id', a.id).eq('is_active', true).order('created_at')
+          .eq('album_id', a.id).eq('is_active', true).order('target_index', { nullsFirst: false }).order('created_at')
         if (!cancelled) setMemories(m || [])
       }
     }
@@ -51,17 +51,20 @@ export default function AlbumDetails() {
         </button>
       </div>
 
+      {album.target_path
+        ? (
+          <Link to={`/album/${album.slug}/scan`} className="btn mt-8 !px-6 !py-3 text-lg">
+            <ScanLine size={20} aria-hidden="true" />{t('scanAlbum')}
+          </Link>
+        )
+        : <p className="mt-8 text-ink/60">{t('notReady')}</p>}
+
       {memories.length === 0 && <p className="mt-10">{t('noMemories')}</p>}
       <div className="mt-10 grid gap-8 grid-cols-1 sm:grid-cols-2 md:grid-cols-3">
         {memories.map((m, i) => (
           <div key={m.id} className={`polaroid ${i % 2 === 0 ? '-rotate-1' : 'rotate-1'}`}>
             <img src={mediaUrl(m.photo_path)} alt={m.title} loading="lazy" className="w-full aspect-[4/3] object-cover" />
-            <div className="py-3 flex items-center justify-between gap-2">
-              <h3 className="font-bold">{m.title}</h3>
-              <Link to={`/scan/${m.id}`} className="btn !px-3 !py-1.5 text-sm">
-                <ScanLine size={16} aria-hidden="true" />{t('scan')}
-              </Link>
-            </div>
+            <h3 className="py-3 font-bold">{m.title}</h3>
           </div>
         ))}
       </div>

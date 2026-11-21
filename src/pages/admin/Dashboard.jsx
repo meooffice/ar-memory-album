@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { supabase, BUCKET } from '../../lib/supabase.js'
 import { useAuth } from '../../lib/auth.jsx'
 import { useT } from '../../lib/i18n.jsx'
+import HowToGuide from '../../components/HowToGuide.jsx'
 
 function makeSlug(title) {
   const base = title.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
@@ -44,7 +45,7 @@ export default function Dashboard() {
   async function removeAlbum(a) {
     if (!window.confirm(t('confirmDeleteAlbum'))) return
     const { data: mems } = await supabase.from('memories').select('photo_path,video_path,target_path').eq('album_id', a.id)
-    const paths = (mems || []).flatMap((m) => [m.photo_path, m.video_path, m.target_path]).filter(Boolean)
+    const paths = [a.target_path, ...(mems || []).flatMap((m) => [m.photo_path, m.video_path, m.target_path])].filter(Boolean)
     if (paths.length) await supabase.storage.from(BUCKET).remove(paths)
     await supabase.from('albums').delete().eq('id', a.id)
     load()
@@ -53,6 +54,8 @@ export default function Dashboard() {
   return (
     <div className="mx-auto max-w-3xl px-4 py-10">
       <h1 className="text-3xl font-bold">{t('dashboard')}</h1>
+
+      <HowToGuide />
 
       <form onSubmit={createAlbum} className="mt-8 bg-white rounded-2xl p-5 shadow-sm space-y-4">
         <h2 className="text-xl font-bold">{t('newAlbum')}</h2>

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Play } from 'lucide-react'
-import { supabase } from '../lib/supabase.js'
+import { supabase, mediaUrl } from '../lib/supabase.js'
 import { useT } from '../lib/i18n.jsx'
 import AlbumCard from '../components/AlbumCard.jsx'
 
@@ -17,6 +17,11 @@ export default function Home() {
       .then(({ data, error }) => (error ? setFailed(true) : setAlbums(data)))
   }, [])
 
+  // Hero card shows the first photo found in any published album.
+  const heroPhoto = albums
+    ?.flatMap((a) => (a.memories || []).filter((m) => m.is_active).map((m) => m.photo_path))
+    .find(Boolean)
+
   return (
     <>
       <section className="mx-auto max-w-5xl px-4 py-12 md:py-20 grid md:grid-cols-2 gap-10 items-center">
@@ -26,8 +31,9 @@ export default function Home() {
           <a href="#albums" className="btn mt-8">{t('browse')}</a>
         </div>
         <div className="polaroid -rotate-2 max-w-xs mx-auto w-full" aria-hidden="true">
-          <div className="aspect-[4/5] bg-gradient-to-br from-rose-soft to-[#e9c7d4] grid place-items-center">
-            <span className="grid place-items-center h-16 w-16 rounded-full bg-white/90 text-rose shadow">
+          <div className="relative aspect-[4/5] overflow-hidden bg-gradient-to-br from-rose-soft to-[#e9c7d4] grid place-items-center">
+            {heroPhoto && <img src={mediaUrl(heroPhoto)} alt="" className="absolute inset-0 h-full w-full object-cover" />}
+            <span className="relative z-[1] grid place-items-center h-16 w-16 rounded-full bg-white/90 text-rose shadow">
               <Play size={28} fill="currentColor" />
             </span>
           </div>
