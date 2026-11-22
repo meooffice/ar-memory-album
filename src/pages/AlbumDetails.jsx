@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ScanLine, Link2 } from 'lucide-react'
 import { supabase, mediaUrl } from '../lib/supabase.js'
 import { useT } from '../lib/i18n.jsx'
@@ -7,6 +7,7 @@ import { useT } from '../lib/i18n.jsx'
 export default function AlbumDetails() {
   const { slug } = useParams()
   const { t } = useT()
+  const navigate = useNavigate()
   const [album, setAlbum] = useState(undefined)
   const [memories, setMemories] = useState([])
   const [copied, setCopied] = useState(false)
@@ -26,6 +27,13 @@ export default function AlbumDetails() {
     load()
     return () => { cancelled = true }
   }, [slug])
+
+  // Runs inside the click, so the browser allows full screen. Android Chrome supports it;
+  // iPhone Safari does not, and the scanner still fills the whole page there.
+  function openScanner() {
+    try { document.documentElement.requestFullscreen?.({ navigationUI: 'hide' })?.catch(() => {}) } catch { /* ignore */ }
+    navigate(`/album/${album.slug}/scan`)
+  }
 
   async function copyLink() {
     try {
@@ -53,9 +61,9 @@ export default function AlbumDetails() {
 
       {album.target_path
         ? (
-          <Link to={`/album/${album.slug}/scan`} className="btn mt-8 !px-6 !py-3 text-lg">
+          <button onClick={openScanner} className="btn mt-8 !px-6 !py-3 text-lg">
             <ScanLine size={20} aria-hidden="true" />{t('scanAlbum')}
-          </Link>
+          </button>
         )
         : <p className="mt-8 text-ink/60">{t('notReady')}</p>}
 
