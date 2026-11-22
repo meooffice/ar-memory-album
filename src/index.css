@@ -53,3 +53,7 @@ h1, h2, h3 { font-family: var(--font-display); line-height: 1.3; }
   border: 1.5px solid rgba(58,35,53,.2);
 }
 .input:focus-visible, .btn:focus-visible, a:focus-visible { outline: 3px solid var(--color-rose); outline-offset: 2px; }
+
+/* MindAR's camera and canvas must not be shrunk by Tailwind's default video/canvas rules */
+.ar-stage video, .ar-stage canvas { max-width: none; }
+.ar-stage canvas { position: absolute; inset: 0; width: 100% !important; height: 100% !important; }

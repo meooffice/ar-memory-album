@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { Volume2, VolumeX, Play, X, RotateCcw, Camera, ChevronRight } from 'lucide-react'
+import { Volume2, VolumeX, Play, X, RotateCcw, RotateCw, Camera, ChevronRight } from 'lucide-react'
 import { supabase, mediaUrl } from '../lib/supabase.js'
 import { useT } from '../lib/i18n.jsx'
 
@@ -68,11 +68,14 @@ function Ring({ className = '' }) {
   return <div className={`animate-spin rounded-full border-4 border-white/30 border-t-rose ${className}`} aria-hidden="true" />
 }
 
-function GuideFrame() {
+// Fixed frame sized like the album's photos, so the person knows where to place the print.
+function GuideFrame({ aspect, vp }) {
+  const w = Math.min(vp.w * 0.86, (vp.h * 0.6) / aspect)
+  const h = w * aspect
   const corner = 'absolute h-9 w-9 border-white/90'
   return (
     <div className="pointer-events-none absolute inset-0 z-[4] grid place-items-center" aria-hidden="true">
-      <div className="relative h-[55vmin] w-[70vmin] max-h-[60%] max-w-[85%] animate-pulse">
+      <div className="relative animate-pulse" style={{ width: w, height: h }}>
         <span className={`${corner} left-0 top-0 rounded-tl-2xl border-l-4 border-t-4`} />
         <span className={`${corner} right-0 top-0 rounded-tr-2xl border-r-4 border-t-4`} />
         <span className={`${corner} bottom-0 left-0 rounded-bl-2xl border-b-4 border-l-4`} />
@@ -80,6 +83,11 @@ function GuideFrame() {
       </div>
     </div>
   )
+}
+
+const median = (arr) => {
+  const a = [...arr].sort((x, y) => x - y)
+  return a.length ? a[Math.floor(a.length / 2)] : 0.75
 }
 
 export default function ARScanner() {
@@ -109,6 +117,8 @@ export default function ARScanner() {
   const [buffering, setBuffering] = useState(false)
   const [muted, setMuted] = useState(false)
   const [toast, setToast] = useState('')
+  const [frameAspect, setFrameAspect] = useState(0.75)
+  const [vp, setVp] = useState(() => ({ w: window.innerWidth, h: window.innerHeight }))
 
   const go = (p) => { phaseRef.current = p; setPhaseState(p) }
 
@@ -150,6 +160,38 @@ export default function ARScanner() {
       setTimeout(() => {
         if (!aliveRef.current && document.fullscreenElement) document.exitFullscreen?.().catch(() => {})
       }, 0)
+    }
+  }, [])
+
+  // Make the camera picture fill the screen (cover) and re-measure after
+  // full screen or rotation, when the page size changes.
+  function layoutCamera() {
+    const s = sessionRef.current
+    const box = containerRef.current
+    if (!s || !box) return
+    try { s.mindar.resize?.() } catch { /* ignore */ }
+    const cam = box.querySelector('video')
+    if (cam) {
+      const set = (k, v) => cam.style.setProperty(k, v, 'important')
+      set('position', 'absolute'); set('top', '0'); set('left', '0')
+      set('width', '100%'); set('height', '100%')
+      set('max-width', 'none'); set('object-fit', 'cover')
+    }
+  }
+
+  useEffect(() => {
+    const onResize = () => {
+      setVp({ w: window.innerWidth, h: window.innerHeight })
+      setTimeout(layoutCamera, 80)
+      setTimeout(layoutCamera, 400)
+    }
+    window.addEventListener('resize', onResize)
+    window.addEventListener('orientationchange', onResize)
+    document.addEventListener('fullscreenchange', onResize)
+    return () => {
+      window.removeEventListener('resize', onResize)
+      window.removeEventListener('orientationchange', onResize)
+      document.removeEventListener('fullscreenchange', onResize)
     }
   }, [])
 
@@ -264,6 +306,7 @@ export default function ARScanner() {
         memories.map((m) => (m.aspect ? m.aspect : loadAspect(mediaUrl(m.photo_path)))),
       )
       if (stale()) return
+      setFrameAspect(median(aspects))
 
       const mindar = new MindARThree({
         container: containerRef.current,
@@ -314,6 +357,9 @@ export default function ARScanner() {
         }
         renderer.render(scene, camera)
       })
+      layoutCamera()
+      requestAnimationFrame(layoutCamera)
+      setTimeout(layoutCamera, 600)
       setStatus('running')
     } catch (err) {
       if (stale()) return
@@ -339,14 +385,24 @@ export default function ARScanner() {
   const showPlayer = phase === 'playing' || phase === 'ended'
   const idx = current ? memories.findIndex((m) => m.id === current.id) : -1
   const next = idx >= 0 ? memories[idx + 1] : undefined
+  // Suggest turning the phone when the photos' shape does not match the screen.
+  const screenPortrait = vp.h >= vp.w
+  const rotateHint = frameAspect < 0.9 && screenPortrait ? 'rotateLandscape'
+    : frameAspect > 1.1 && !screenPortrait ? 'rotatePortrait' : ''
   const softBtn = 'inline-flex items-center justify-center gap-2 rounded-full bg-white/15 px-4 py-3 font-semibold text-white backdrop-blur'
 
   return (
     <div className="fixed inset-0 z-50 select-none bg-black text-white">
       {/* Camera (MindAR draws here) */}
-      <div ref={containerRef} className="absolute inset-0 overflow-hidden" />
+      <div ref={containerRef} className="ar-stage absolute inset-0 overflow-hidden" />
 
-      {running && phase === 'search' && <GuideFrame />}
+      {running && phase === 'search' && <GuideFrame aspect={frameAspect} vp={vp} />}
+
+      {running && phase === 'search' && rotateHint && (
+        <p className="absolute inset-x-0 top-20 z-10 mx-auto flex w-fit max-w-xs items-center gap-2 rounded-2xl bg-black/65 px-4 py-2 text-center text-sm">
+          <RotateCw size={18} className="shrink-0" aria-hidden="true" />{t(rotateHint)}
+        </p>
+      )}
 
       {/* Loader that sits on the detected photo */}
       <div ref={loaderRef} className={`pointer-events-none absolute left-0 top-0 z-[6] ${running && phase === 'detected' ? '' : 'hidden'}`}>
