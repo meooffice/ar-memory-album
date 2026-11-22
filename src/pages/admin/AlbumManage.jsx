@@ -1,45 +1,45 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
+import { Loader2, Pencil } from 'lucide-react'
 import { supabase, mediaUrl, BUCKET } from '../../lib/supabase.js'
-import { Loader2 } from 'lucide-react'
 import { useT } from '../../lib/i18n.jsx'
 import { uploadWithProgress } from '../../lib/upload.js'
+import { MB, ext, readAspect, checkPhoto, checkVideo } from '../../lib/files.js'
 import UploadProgress from '../../components/UploadProgress.jsx'
+import MemoryEditor from '../../components/MemoryEditor.jsx'
+import QrCard from '../../components/QrCard.jsx'
 
-const MB = 1024 * 1024
 const MAX = 30
-const ext = (f) => (f.name.split('.').pop() || '').toLowerCase()
-
-function readAspect(file) {
-  return new Promise((resolve) => {
-    const url = URL.createObjectURL(file)
-    const img = new Image()
-    img.onload = () => { resolve(img.naturalHeight / img.naturalWidth); URL.revokeObjectURL(url) }
-    img.onerror = () => { resolve(null); URL.revokeObjectURL(url) }
-    img.src = url
-  })
-}
 
 export default function AlbumManage() {
   const { id } = useParams()
   const { t } = useT()
   const [album, setAlbum] = useState(null)
   const [memories, setMemories] = useState([])
+  const [editingId, setEditingId] = useState(null)
 
+  // album details
+  const [albumTitle, setAlbumTitle] = useState('')
+  const [albumDesc, setAlbumDesc] = useState('')
+  const [detailsBusy, setDetailsBusy] = useState(false)
+  const [detailsMsg, setDetailsMsg] = useState({ type: '', text: '' })
+
+  // add memory
   const [title, setTitle] = useState('')
   const [photo, setPhoto] = useState(null)
   const [video, setVideo] = useState(null)
   const [slotInput, setSlotInput] = useState('')
   const [busy, setBusy] = useState(false)
   const [progress, setProgress] = useState(0)
-  const [targetProgress, setTargetProgress] = useState(0)
   const [msg, setMsg] = useState({ type: '', text: '' })
   const memFormRef = useRef(null)
-  const targetFormRef = useRef(null)
 
+  // album target (.mind)
   const [targetFile, setTargetFile] = useState(null)
   const [targetBusy, setTargetBusy] = useState(false)
+  const [targetProgress, setTargetProgress] = useState(0)
   const [targetMsg, setTargetMsg] = useState({ type: '', text: '' })
+  const targetFormRef = useRef(null)
 
   const load = useCallback(async () => {
     const { data: a } = await supabase.from('albums').select('*').eq('id', id).maybeSingle()
@@ -49,6 +49,13 @@ export default function AlbumManage() {
     setMemories(m || [])
   }, [id])
   useEffect(() => { load() }, [load])
+
+  // Fill the album details form once, when the album first loads.
+  const albumId = album?.id
+  useEffect(() => {
+    if (album) { setAlbumTitle(album.title); setAlbumDesc(album.description || '') }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [albumId])
 
   // Warn before closing the tab while an upload is running.
   const uploading = busy || targetBusy
@@ -60,9 +67,22 @@ export default function AlbumManage() {
   }, [uploading])
 
   const used = memories.map((m) => m.target_index).filter((n) => n !== null)
-  const nextSlot = used.length ? Math.max(...used) + 2 : 1 // displayed 1-based
+  const nextSlot = used.length ? Math.max(...used) + 2 : 1 // shown 1-based
   const slotValue = slotInput || String(nextSlot)
   const duplicates = used.length !== new Set(used).size
+
+  async function saveDetails(e) {
+    e.preventDefault()
+    if (!albumTitle.trim()) { setDetailsMsg({ type: 'error', text: t('requiredFields') }); return }
+    setDetailsBusy(true); setDetailsMsg({ type: '', text: '' })
+    const { error } = await supabase.from('albums').update({
+      title: albumTitle.trim(), description: albumDesc.trim() || null, updated_at: new Date().toISOString(),
+    }).eq('id', id)
+    setDetailsBusy(false)
+    if (error) { setDetailsMsg({ type: 'error', text: t('error') }); return }
+    setDetailsMsg({ type: 'ok', text: t('saved') })
+    load()
+  }
 
   async function uploadTarget(e) {
     e.preventDefault()
@@ -80,7 +100,6 @@ export default function AlbumManage() {
       const { error: upErr } = await supabase.from('albums').update({ target_path: path, updated_at: new Date().toISOString() }).eq('id', id)
       if (upErr) { await supabase.storage.from(BUCKET).remove([path]); throw upErr }
       if (album?.target_path) await supabase.storage.from(BUCKET).remove([album.target_path])
-      setTargetMsg({ type: 'ok', text: t('targetReady') })
       setTargetFile(null); targetFormRef.current?.reset()
       load()
     } catch (err) {
@@ -96,11 +115,7 @@ export default function AlbumManage() {
     if (!title.trim() || !photo || !video) return t('requiredFields')
     const n = parseInt(slotValue, 10)
     if (!(n >= 1 && n <= MAX)) return t('invalidSlot')
-    if (!['jpg', 'jpeg', 'png'].includes(ext(photo))) return `${t('wrongType')} ${photo.name}`
-    if (photo.size > 10 * MB) return `${t('fileTooBig')} ${photo.name}`
-    if (ext(video) !== 'mp4') return `${t('wrongType')} ${video.name}`
-    if (video.size > 50 * MB) return `${t('fileTooBig')} ${video.name}`
-    return null
+    return checkPhoto(photo, t) || checkVideo(video, t)
   }
 
   async function submit(e) {
@@ -111,7 +126,6 @@ export default function AlbumManage() {
 
     const base = `${id}/${crypto.randomUUID()}`
     const uploaded = []
-    // Overall progress is weighted by file size (photo + video).
     const total = photo.size + video.size
     const loaded = { photo: 0, video: 0 }
     setProgress(0)
@@ -169,6 +183,18 @@ export default function AlbumManage() {
       <Link to="/admin" className="text-sm text-rose-deep hover:underline">{t('back')}</Link>
       <h1 className="text-3xl font-bold mt-2">{album.title}</h1>
 
+      <form onSubmit={saveDetails} className="mt-8 bg-white rounded-2xl p-5 shadow-sm space-y-3">
+        <h2 className="text-xl font-bold">{t('editAlbum')}</h2>
+        <input className="input" required placeholder={t('albumTitle')} value={albumTitle} onChange={(e) => setAlbumTitle(e.target.value)} />
+        <textarea className="input" rows={2} placeholder={t('albumDescription')} value={albumDesc} onChange={(e) => setAlbumDesc(e.target.value)} />
+        {detailsMsg.text && <p role="alert" className={detailsMsg.type === 'ok' ? 'text-green-700' : 'text-rose-deep'}>{detailsMsg.text}</p>}
+        <button className="btn" disabled={detailsBusy}>
+          {detailsBusy && <Loader2 size={18} className="animate-spin" aria-hidden="true" />}{t('save')}
+        </button>
+      </form>
+
+      <QrCard album={album} />
+
       <form ref={targetFormRef} onSubmit={uploadTarget} className="mt-8 bg-white rounded-2xl p-5 shadow-sm space-y-3">
         <h2 className="text-xl font-bold">{t('albumTarget')}</h2>
         <p className="text-sm text-ink/60">{t('albumTargetHint')}</p>
@@ -214,16 +240,25 @@ export default function AlbumManage() {
       {memories.length === 0 && <p>{t('noMemories')}</p>}
       <ul className="space-y-3">
         {memories.map((m) => (
-          <li key={m.id} className="bg-white rounded-2xl p-3 shadow-sm flex items-center gap-4">
-            <img src={mediaUrl(m.photo_path)} alt="" className="h-16 w-16 rounded-lg object-cover" />
-            <p className="flex-1 font-bold">{m.title}</p>
-            <label className="text-sm">
-              <span className="sr-only">{t('slotShort')}</span>
-              <input key={`${m.id}-${m.target_index}`} className="input !w-16 !px-2 !py-1.5 text-center" type="number" min="1" max={MAX}
-                aria-label={t('slotShort')} defaultValue={m.target_index === null ? '' : m.target_index + 1}
-                onBlur={(e) => saveSlot(m, e.target.value)} />
-            </label>
-            <button onClick={() => removeMemory(m)} className="btn btn-ghost !py-1.5 text-sm text-rose-deep">{t('delete')}</button>
+          <li key={m.id} className="bg-white rounded-2xl p-3 shadow-sm">
+            <div className="flex items-center gap-3">
+              <img src={mediaUrl(m.photo_path)} alt="" className="h-16 w-16 rounded-lg object-cover" />
+              <p className="flex-1 font-bold">{m.title}</p>
+              <label className="text-sm">
+                <span className="sr-only">{t('slotShort')}</span>
+                <input key={`${m.id}-${m.target_index}`} className="input !w-16 !px-2 !py-1.5 text-center" type="number" min="1" max={MAX}
+                  aria-label={t('slotShort')} defaultValue={m.target_index === null ? '' : m.target_index + 1}
+                  onBlur={(e) => saveSlot(m, e.target.value)} />
+              </label>
+              <button onClick={() => setEditingId(editingId === m.id ? null : m.id)} aria-expanded={editingId === m.id}
+                className="btn btn-ghost !py-1.5 text-sm">
+                <Pencil size={14} aria-hidden="true" />{t('edit')}
+              </button>
+              <button onClick={() => removeMemory(m)} className="btn btn-ghost !py-1.5 text-sm text-rose-deep">{t('delete')}</button>
+            </div>
+            {editingId === m.id && (
+              <MemoryEditor memory={m} onCancel={() => setEditingId(null)} onSaved={() => { setEditingId(null); load() }} />
+            )}
           </li>
         ))}
       </ul>

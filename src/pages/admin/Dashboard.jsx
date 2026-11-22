@@ -55,6 +55,8 @@ export default function Dashboard() {
     <div className="mx-auto max-w-3xl px-4 py-10">
       <h1 className="text-3xl font-bold">{t('dashboard')}</h1>
 
+      <Link to="/admin/stats" className="btn btn-ghost mt-4">{t('stats')}</Link>
+
       <HowToGuide />
 
       <form onSubmit={createAlbum} className="mt-8 bg-white rounded-2xl p-5 shadow-sm space-y-4">

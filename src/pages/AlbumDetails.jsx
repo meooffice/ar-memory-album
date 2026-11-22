@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { ScanLine, Link2 } from 'lucide-react'
+import { ScanLine, Link2, Share2 } from 'lucide-react'
 import { supabase, mediaUrl } from '../lib/supabase.js'
 import { useT } from '../lib/i18n.jsx'
+import { shareLink } from '../lib/share.js'
 
 export default function AlbumDetails() {
   const { slug } = useParams()
@@ -54,9 +55,14 @@ export default function AlbumDetails() {
           <h1 className="text-3xl font-bold">{album.title}</h1>
           {album.description && <p className="mt-2 text-ink/75 max-w-xl">{album.description}</p>}
         </div>
-        <button onClick={copyLink} className="btn btn-ghost">
-          <Link2 size={18} aria-hidden="true" />{copied ? t('copied') : t('copyLink')}
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button onClick={() => shareLink({ title: album.title, url: window.location.href })} className="btn btn-ghost">
+            <Share2 size={18} aria-hidden="true" />{t('share')}
+          </button>
+          <button onClick={copyLink} className="btn btn-ghost">
+            <Link2 size={18} aria-hidden="true" />{copied ? t('copied') : t('copyLink')}
+          </button>
+        </div>
       </div>
 
       {album.target_path

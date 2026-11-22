@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { Link, Outlet } from 'react-router-dom'
 import { Images } from 'lucide-react'
 import { useT } from '../lib/i18n.jsx'
@@ -6,6 +7,21 @@ import { useAuth } from '../lib/auth.jsx'
 export default function Layout() {
   const { t, lang, setLang } = useT()
   const { session, isAdmin, signOut } = useAuth()
+  const [installEvent, setInstallEvent] = useState(null)
+
+  // Android Chrome offers "install" once the site qualifies as an app.
+  useEffect(() => {
+    const onPrompt = (e) => { e.preventDefault(); setInstallEvent(e) }
+    window.addEventListener('beforeinstallprompt', onPrompt)
+    return () => window.removeEventListener('beforeinstallprompt', onPrompt)
+  }, [])
+
+  async function install() {
+    if (!installEvent) return
+    installEvent.prompt()
+    await installEvent.userChoice
+    setInstallEvent(null)
+  }
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -15,7 +31,10 @@ export default function Layout() {
             <Images className="text-rose" size={22} aria-hidden="true" />
             {t('appName')}
           </Link>
-          <nav className="flex items-center gap-2 text-sm">
+          <nav className="flex flex-wrap items-center justify-end gap-2 text-sm">
+            {installEvent && (
+              <button onClick={install} className="rounded-full bg-rose px-3 py-1.5 font-medium text-white">{t('install')}</button>
+            )}
             {isAdmin && <Link to="/admin" className="px-3 py-1.5 rounded-full hover:bg-rose-soft">{t('admin')}</Link>}
             {session
               ? <button onClick={signOut} className="px-3 py-1.5 rounded-full hover:bg-rose-soft">{t('logout')}</button>

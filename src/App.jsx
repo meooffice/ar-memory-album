@@ -7,6 +7,7 @@ import ARScanner from './pages/ARScanner.jsx'
 import Login from './pages/Login.jsx'
 import Dashboard from './pages/admin/Dashboard.jsx'
 import AlbumManage from './pages/admin/AlbumManage.jsx'
+import Stats from './pages/admin/Stats.jsx'
 
 export default function App() {
   return (
@@ -19,6 +20,7 @@ export default function App() {
         <Route element={<ProtectedRoute />}>
           <Route path="/admin" element={<Dashboard />} />
           <Route path="/admin/album/:id" element={<AlbumManage />} />
+          <Route path="/admin/stats" element={<Stats />} />
         </Route>
       </Route>
     </Routes>
