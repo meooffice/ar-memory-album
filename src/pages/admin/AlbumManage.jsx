@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { supabase, mediaUrl, BUCKET } from '../../lib/supabase.js'
 import { Loader2 } from 'lucide-react'
@@ -34,12 +34,12 @@ export default function AlbumManage() {
   const [progress, setProgress] = useState(0)
   const [targetProgress, setTargetProgress] = useState(0)
   const [msg, setMsg] = useState({ type: '', text: '' })
-  const [formKey, setFormKey] = useState(0)
+  const memFormRef = useRef(null)
+  const targetFormRef = useRef(null)
 
   const [targetFile, setTargetFile] = useState(null)
   const [targetBusy, setTargetBusy] = useState(false)
   const [targetMsg, setTargetMsg] = useState({ type: '', text: '' })
-  const [targetKey, setTargetKey] = useState(0)
 
   const load = useCallback(async () => {
     const { data: a } = await supabase.from('albums').select('*').eq('id', id).maybeSingle()
@@ -81,7 +81,7 @@ export default function AlbumManage() {
       if (upErr) { await supabase.storage.from(BUCKET).remove([path]); throw upErr }
       if (album?.target_path) await supabase.storage.from(BUCKET).remove([album.target_path])
       setTargetMsg({ type: 'ok', text: t('targetReady') })
-      setTargetFile(null); setTargetKey((k) => k + 1)
+      setTargetFile(null); targetFormRef.current?.reset()
       load()
     } catch (err) {
       console.error(err)
@@ -137,7 +137,7 @@ export default function AlbumManage() {
       })
       if (error) throw error
       setMsg({ type: 'ok', text: t('uploaded') })
-      setTitle(''); setPhoto(null); setVideo(null); setSlotInput(''); setFormKey((k) => k + 1)
+      setTitle(''); setPhoto(null); setVideo(null); setSlotInput(''); memFormRef.current?.reset()
       load()
     } catch (err) {
       console.error(err)
@@ -169,7 +169,7 @@ export default function AlbumManage() {
       <Link to="/admin" className="text-sm text-rose-deep hover:underline">{t('back')}</Link>
       <h1 className="text-3xl font-bold mt-2">{album.title}</h1>
 
-      <form key={targetKey} onSubmit={uploadTarget} className="mt-8 bg-white rounded-2xl p-5 shadow-sm space-y-3">
+      <form ref={targetFormRef} onSubmit={uploadTarget} className="mt-8 bg-white rounded-2xl p-5 shadow-sm space-y-3">
         <h2 className="text-xl font-bold">{t('albumTarget')}</h2>
         <p className="text-sm text-ink/60">{t('albumTargetHint')}</p>
         <p className="text-sm text-ink/60">{t('recompileHint')}</p>
@@ -178,13 +178,13 @@ export default function AlbumManage() {
         </p>
         <input className="input" type="file" accept=".mind" onChange={(e) => setTargetFile(e.target.files[0] || null)} />
         {targetBusy && <UploadProgress percent={targetProgress} label={t('uploading')} />}
-        {targetMsg.text && <p role="alert" className={targetMsg.type === 'ok' ? 'text-green-700' : 'text-rose-deep'}>{targetMsg.text}</p>}
+        {targetMsg.type === 'error' && <p role="alert" className="text-rose-deep">{targetMsg.text}</p>}
         <button className="btn" disabled={targetBusy || !targetFile}>
           {targetBusy && <Loader2 size={18} className="animate-spin" aria-hidden="true" />}{t('uploadTarget')}
         </button>
       </form>
 
-      <form key={formKey} onSubmit={submit} className="mt-8 bg-white rounded-2xl p-5 shadow-sm space-y-4">
+      <form ref={memFormRef} onSubmit={submit} className="mt-8 bg-white rounded-2xl p-5 shadow-sm space-y-4">
         <h2 className="text-xl font-bold">{t('addMemory')}</h2>
         <label className="block">
           <span className="text-sm font-medium">{t('memoryTitle')}</span>
