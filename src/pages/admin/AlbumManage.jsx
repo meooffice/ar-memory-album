@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { supabase, mediaUrl, BUCKET } from '../../lib/supabase.js'
+import { Loader2 } from 'lucide-react'
 import { useT } from '../../lib/i18n.jsx'
+import { uploadWithProgress } from '../../lib/upload.js'
+import UploadProgress from '../../components/UploadProgress.jsx'
 
 const MB = 1024 * 1024
 const MAX = 30
@@ -28,6 +31,8 @@ export default function AlbumManage() {
   const [video, setVideo] = useState(null)
   const [slotInput, setSlotInput] = useState('')
   const [busy, setBusy] = useState(false)
+  const [progress, setProgress] = useState(0)
+  const [targetProgress, setTargetProgress] = useState(0)
   const [msg, setMsg] = useState({ type: '', text: '' })
   const [formKey, setFormKey] = useState(0)
 
@@ -45,6 +50,15 @@ export default function AlbumManage() {
   }, [id])
   useEffect(() => { load() }, [load])
 
+  // Warn before closing the tab while an upload is running.
+  const uploading = busy || targetBusy
+  useEffect(() => {
+    if (!uploading) return
+    const warn = (e) => { e.preventDefault(); e.returnValue = '' }
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
+  }, [uploading])
+
   const used = memories.map((m) => m.target_index).filter((n) => n !== null)
   const nextSlot = used.length ? Math.max(...used) + 2 : 1 // displayed 1-based
   const slotValue = slotInput || String(nextSlot)
@@ -55,12 +69,14 @@ export default function AlbumManage() {
     if (!targetFile) return
     if (ext(targetFile) !== 'mind') { setTargetMsg({ type: 'error', text: `${t('wrongType')} ${targetFile.name}` }); return }
     if (targetFile.size > 10 * MB) { setTargetMsg({ type: 'error', text: `${t('fileTooBig')} ${targetFile.name}` }); return }
-    setTargetBusy(true); setTargetMsg({ type: '', text: '' })
+    setTargetBusy(true); setTargetProgress(0); setTargetMsg({ type: '', text: '' })
     try {
       // A new file name each time avoids stale cached copies.
       const path = `${id}/album-${crypto.randomUUID()}.mind`
-      const { error } = await supabase.storage.from(BUCKET).upload(path, targetFile, { contentType: 'application/octet-stream' })
-      if (error) throw error
+      await uploadWithProgress(path, targetFile, {
+        contentType: 'application/octet-stream',
+        onProgress: (f) => setTargetProgress(Math.round(f * 100)),
+      })
       const { error: upErr } = await supabase.from('albums').update({ target_path: path, updated_at: new Date().toISOString() }).eq('id', id)
       if (upErr) { await supabase.storage.from(BUCKET).remove([path]); throw upErr }
       if (album?.target_path) await supabase.storage.from(BUCKET).remove([album.target_path])
@@ -95,10 +111,19 @@ export default function AlbumManage() {
 
     const base = `${id}/${crypto.randomUUID()}`
     const uploaded = []
+    // Overall progress is weighted by file size (photo + video).
+    const total = photo.size + video.size
+    const loaded = { photo: 0, video: 0 }
+    setProgress(0)
     const put = async (file, name, contentType) => {
       const path = `${base}/${name}.${ext(file)}`
-      const { error } = await supabase.storage.from(BUCKET).upload(path, file, { contentType, cacheControl: '3600' })
-      if (error) throw error
+      await uploadWithProgress(path, file, {
+        contentType,
+        onProgress: (f) => {
+          loaded[name] = f * file.size
+          setProgress(Math.round(((loaded.photo + loaded.video) / total) * 100))
+        },
+      })
       uploaded.push(path)
       return path
     }
@@ -152,8 +177,11 @@ export default function AlbumManage() {
           {album.target_path ? t('targetReady') : t('targetMissing')}
         </p>
         <input className="input" type="file" accept=".mind" onChange={(e) => setTargetFile(e.target.files[0] || null)} />
+        {targetBusy && <UploadProgress percent={targetProgress} label={t('uploading')} />}
         {targetMsg.text && <p role="alert" className={targetMsg.type === 'ok' ? 'text-green-700' : 'text-rose-deep'}>{targetMsg.text}</p>}
-        <button className="btn" disabled={targetBusy || !targetFile}>{targetBusy ? t('uploading') : t('uploadTarget')}</button>
+        <button className="btn" disabled={targetBusy || !targetFile}>
+          {targetBusy && <Loader2 size={18} className="animate-spin" aria-hidden="true" />}{t('uploadTarget')}
+        </button>
       </form>
 
       <form key={formKey} onSubmit={submit} className="mt-8 bg-white rounded-2xl p-5 shadow-sm space-y-4">
@@ -174,9 +202,11 @@ export default function AlbumManage() {
           <span className="text-sm font-medium">{t('videoFile')}</span>
           <input className="input mt-1" type="file" accept=".mp4,video/mp4" onChange={(e) => setVideo(e.target.files[0] || null)} />
         </label>
-        {busy && <p>{t('uploading')}</p>}
+        {busy && <UploadProgress percent={progress} label={t('uploading')} />}
         {msg.text && <p role="alert" className={msg.type === 'ok' ? 'text-green-700' : 'text-rose-deep'}>{msg.text}</p>}
-        <button className="btn" disabled={busy}>{t('upload')}</button>
+        <button className="btn" disabled={busy}>
+          {busy && <Loader2 size={18} className="animate-spin" aria-hidden="true" />}{t('upload')}
+        </button>
       </form>
 
       <h2 className="text-xl font-bold mt-12 mb-4">{t('memories')} ({memories.length}/{MAX})</h2>
